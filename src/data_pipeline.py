@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import pickle
 from pathlib import Path
 from typing import Any, Dict, Sequence, Tuple
@@ -112,9 +113,29 @@ def build_context_windows(
     }
 
 
-def normalize_tensor(tensor: np.ndarray) -> np.ndarray:
-    """Standardize features per column (zero mean, unit variance)."""
+@dataclass
+class NormalizationStats:
+    mean: np.ndarray
+    std: np.ndarray
+
+
+def compute_normalization_stats(tensor: np.ndarray) -> NormalizationStats:
+    """Return per-feature mean/std for a tensor."""
     mean = tensor.mean(axis=0, keepdims=True)
     std = tensor.std(axis=0, keepdims=True)
     std = np.where(std < 1e-6, 1.0, std)
-    return (tensor - mean) / std
+    return NormalizationStats(mean=mean.astype(np.float32), std=std.astype(np.float32))
+
+
+def apply_normalization(
+    tensor: np.ndarray, stats: NormalizationStats
+) -> np.ndarray:
+    """Standardize using pre-computed stats."""
+    return ((tensor - stats.mean) / stats.std).astype(np.float32)
+
+
+def denormalize_tensor(
+    tensor: np.ndarray, stats: NormalizationStats
+) -> np.ndarray:
+    """Invert normalization back to the original scale."""
+    return (tensor * stats.std + stats.mean).astype(np.float32)

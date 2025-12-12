@@ -4,45 +4,22 @@ import argparse
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 
-from src.data_pipeline import (
-    build_context_windows,
-    build_coda_tensor,
-    load_dialogue_dataframe,
-    normalize_tensor,
-)
+from src.datasets import CodaDialogueDataset
 from src.model import CodaLanguageModel
 
 
-class CodaDialogueDataset(Dataset):
-    """Wraps the dialogue data into context windows for training."""
-
-    def __init__(
-        self,
-        window_size: int = 4,
-        max_icis: int = 20,
-    ) -> None:
-        df = load_dialogue_dataframe()
-        raw_features = build_coda_tensor(df, max_icis=max_icis)
-        normalized = normalize_tensor(raw_features)
-        windows = build_context_windows(
-            df, window_size=window_size, max_icis=max_icis, precomputed_features=normalized
-        )
-        self.contexts = windows["contexts"]
-        self.mask = windows["context_mask"]
-        self.targets = windows["targets"]
-        self.feature_dim = self.targets.shape[-1]
-
-    def __len__(self) -> int:
-        return len(self.targets)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        context = torch.from_numpy(self.contexts[idx])
-        mask = torch.from_numpy(self.mask[idx])
-        target = torch.from_numpy(self.targets[idx])
-        return context, mask, target
+def compute_contrastive_loss(
+    context_embeddings: torch.Tensor,
+    target_embeddings: torch.Tensor,
+    temperature: float,
+) -> torch.Tensor:
+    logits = torch.matmul(context_embeddings, target_embeddings.transpose(0, 1)) / temperature
+    labels = torch.arange(logits.size(0), device=logits.device)
+    return F.cross_entropy(logits, labels)
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--window", type=int, default=4)
     parser.add_argument("--hidden", type=int, default=128)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--contrastive-weight", type=float, default=0.0)
+    parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--device", type=str, default="cpu")
     return parser.parse_args()
 
@@ -67,20 +46,35 @@ def train(args: argparse.Namespace) -> None:
 
     for epoch in range(1, args.epochs + 1):
         model.train()
-        accumulated = 0.0
+        total_mse = 0.0
+        total_contrastive = 0.0
         for contexts, masks, targets in loader:
             contexts = contexts.to(args.device)
             masks = masks.to(args.device)
             targets = targets.to(args.device)
 
             optimizer.zero_grad()
-            pred, _ = model(contexts, masks)
-            loss = loss_fn(pred, targets)
-            loss.backward()
+            prediction, context_embedding = model(contexts, masks)
+            mse_loss = loss_fn(prediction, targets)
+            total_loss = mse_loss
+            if args.contrastive_weight > 0.0:
+                target_embedding = model.encoder(targets.unsqueeze(1)).squeeze(1)
+                contrastive_loss = compute_contrastive_loss(
+                    context_embedding, target_embedding, args.temperature
+                )
+                total_loss = mse_loss + args.contrastive_weight * contrastive_loss
+                total_contrastive += contrastive_loss.item() * targets.size(0)
+
+            total_loss.backward()
             optimizer.step()
-            accumulated += loss.item() * targets.size(0)
-        avg_loss = accumulated / len(dataset)
-        print(f"Epoch {epoch}/{args.epochs} · MSE {avg_loss:.4f}")
+            total_mse += mse_loss.item() * targets.size(0)
+
+        avg_mse = total_mse / len(dataset)
+        message = f"Epoch {epoch}/{args.epochs} · MSE {avg_mse:.4f}"
+        if args.contrastive_weight > 0.0:
+            avg_contrastive = total_contrastive / len(dataset)
+            message += f" · Contrastive {avg_contrastive:.4f}"
+        print(message)
 
     save_path = Path("artifacts") / "coda_model.pt"
     save_path.parent.mkdir(exist_ok=True)
