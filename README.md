@@ -1,16 +1,39 @@
-# Contextual and Combinatorial Structure in Sperm Whale Vocalisations
+# Sperm Whale Language Architect
 
-This repository contains code for the paper _"Contextual and Combinatorial Structure in Sperm Whale Vocalisations,"_ by Pratyusha Sharma, Shane Gero, Roger Payne, David Gruber, Daniela Rus*, Antonio Torralba*, Jacob Andreas*. 
+This repository sits on top of the original *sw-combinatoriality* analysis; the raw dataset, reference notebooks, and the paper’s README now live under `sw-combinatoriality/` so we can treat them as archival material while building the AI components at the top level.
 
+## Layout
+- `sw-combinatoriality/`: the original repository (paper README, notebooks, `data/`, `code/`, `whalesbook/`, etc.). Treat this as the read-only historical source.
+- `src/`: reusable preprocessing, dataset, and model definitions for the neural workflow.
+- `train/`: entry-point (`train.py`) that trains the coda language model with optional contrastive objectives.
+- `scripts/`: auxiliary tooling (`verify_data_pipeline.py`, `rubato_summary.py`, `infer_next_coda.py`) for sanity checks and quick analyses.
+- `plans/`: the roadmap (`nn-roadmap.md`) outlining data choices, architecture direction, and verification steps.
+- `AGENTS.md`: who is responsible for what in this repo.
+- `artifacts/`: (created by training) keeps the saved PyTorch checkpoints.
 
-## Abstract
+## Getting started
+1. **Verify the data pipeline** (makes sure context windows and normalization are correct):
+   ```bash
+   python3 scripts/verify_data_pipeline.py
+   ```
+2. **Inspect rubato drift**:
+   ```bash
+   python3 scripts/rubato_summary.py
+   ```
+   shows how same-whale tempo changes compare to random pairs using the published CSV.
+3. **Install PyTorch** (must match your Python version; the default `python3 -m pip install torch` may fail for Python 3.13—grab the appropriate CPU wheel from https://download.pytorch.org/whl/cpu).
+4. **Train the model** (example):
+   ```bash
+   python3 train/train.py --epochs 10 --batch 32
+   ```
+   adjust `--contrastive-weight` and `--temperature` once you have the checkpoint at `artifacts/coda_model.pt`.
+5. **Run inference** on a trained checkpoint:
+   ```bash
+   python3 scripts/infer_next_coda.py
+   ```
+   inspects the last dialogue index by default and prints the predicted vs. true coda vectors.
 
-Sperm whales (_Physeter macrocephalus_) are highly social mammals that communicate using sequences of clicks called codas. While a subset of codas have been shown to encode information about caller identity, almost everything else about the sperm whale communication system, its structure, and information-carrying capacity, remains unknown. We show that codas exhibit contextual and combinatorial structure. First, we report previously undescribed modulations of coda structure that are sensitive to the conversational context in which they occur. We call these rubato and ornamentation. These are systematically controlled and imitated across whales. Second, we show that codas form a combinatorial coding system in which rubato and ornamentation combine with two context-independent features we call rhythm and tempo to produce a large inventory of distinguishable codas. Sperm whale vocalisations are more expressive and structured than previously believed, and built from a repertoire comprising nearly an order of magnitude more distinguishable codas. These results show context-sensitive and combinatorial vocalisation extends beyond humans, and can appear in organisms with divergent evolutionary lineage and vocal apparatus.
-
-## Neural pipeline status
-
-- The pickled rhythm/ornament/tempo artifacts plus the raw dialogue CSVs already provide fixed-length feature vectors, context windows, and labels needed for a learning system. `src/data_pipeline.py` centralizes all loaders, padding, normalization, and context-window building so any downstream training or analysis code uses the same preprocessing.
-- `src/model.py` defines a simple context-encoder architecture that turns a window of previous codas into both a regression prediction for the next coda and an embedding for future contrastive objectives.
-- `train/train.py` provides a CLI entrypoint that loads the dialogues, wraps them in a PyTorch `Dataset`, trains the model with mean-squared error, and saves the fingerprinted weights inside `artifacts/coda_model.pt`. Run it with `python3 train/train.py --epochs 10 --batch 32` after installing dependencies (`pip install torch`).
-- `src/datasets.py` packages the dataset logic so training, inference, and notebook experiments can all import normalized context windows plus the normalization stats needed to convert vectors back to physical durations and click counts.
-- `scripts/verify_data_pipeline.py` and `scripts/infer_next_coda.py` provide quick checks for the preprocessing pipeline and an example inference run; run the verifier before training and the inference script after each experiment to sanity-check the learned model.
+## Notes
+- All dataset code now loads from `sw-combinatoriality/data`. Keep any new processing inside `src/` or `train/` so the top-level project stays clean.
+- The notebooks in `sw-combinatoriality/code/` still point to `../data`, so move them into that folder if you reopen them and they expect the original layout.
+- Use `AGENTS.md` to coordinate future contributors; the standard change workflow is to edit `src/`, `train/`, or `scripts/` and keep `sw-combinatoriality/` as archival evidence of the published study.

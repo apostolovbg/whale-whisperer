@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = REPO_ROOT / "data"
+DATA_DIR = REPO_ROOT / "sw-combinatoriality" / "data"
 
 
 def load_dialogue_dataframe(path: Path | str | None = None) -> pd.DataFrame:
