@@ -1,6 +1,6 @@
-# Sperm Whale Language Architect
+# Whale Whisperer
 
-This repository sits on top of the original *sw-combinatoriality* analysis; the raw dataset, reference notebooks, and the paper’s README now live under `sw-combinatoriality/` so we can treat them as archival material while building the AI components at the top level.
+# Whale Whisperer builds on the original *sw-combinatoriality* analysis; the raw dataset, reference notebooks, and the paper’s README now live under `sw-combinatoriality/` so we can treat them as archival material while building the AI components at the top level.
 
 ## Layout
 - `sw-combinatoriality/`: the original repository (paper README, notebooks, `data/`, `code/`, `whalesbook/`, etc.). Treat this as the read-only historical source.
